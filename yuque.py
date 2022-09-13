@@ -1,3 +1,4 @@
+import datetime
 import re
 import httpx
 from config import Config
@@ -29,31 +30,51 @@ class Yuque:
         with open(path, 'w') as f:
             f.writelines(content)
 
+    @staticmethod
+    def _build_meta_info(repo_name, doc):
+        meta_info = f"""---
+title: {doc['title']}
+date: {datetime.datetime.strptime(doc['created_at'], '%Y-%m-%dT%H:%M:%S.000Z').strftime('%Y-%m-%d %H:%M:%S')}
+categories: 
+  - {repo_name}
+tags:
+  - {repo_name}
+---
+
+"""
+        return meta_info
+
+    @staticmethod
+    def _parse_body(raw_body):
+        posts_text = re.sub(r'\\n', "\n", raw_body)
+        result = re.sub(r'<a name="(.*)"></a>', "", posts_text)
+        return result
+
+    @staticmethod
+    def _build_doc(repo_name, doc):
+        meta_info = Yuque._build_meta_info(repo_name, doc)
+        body = meta_info + Yuque._parse_body(doc['body'])
+        return body
+
     def _fresh_login_id(self):
         res = httpx.get(self.url + '/user', headers=self.head)
         userinfo = res.json()
         self.login_id = userinfo['data']['login']
 
-    def _get_docs(self, repo_id) -> List:
-        res_docs = httpx.get(self.url + '/repos/' + str(repo_id) + '/docs', headers=self.head)
+    def _get_docs(self, repo) -> List:
+        res_docs = httpx.get(self.url + '/repos/' + str(repo['id']) + '/docs', headers=self.head)
         docs = res_docs.json()
         docs_list = []
         for doc in docs['data']:
             slug = doc['slug']
             doc_json = {}
-            res_content = httpx.get(self.url + '/repos/' + str(repo_id) + '/docs/' + slug, headers=self.head)
+            res_content = httpx.get(self.url + '/repos/' + str(repo['id']) + '/docs/' + slug, headers=self.head)
             content = res_content.json()
-            doc_json['title'] = content['data']['title']
-            body = content['data']['body']
-            doc_json['body'] = self._parse_body(body)
-
+            doc_data = content['data']
+            doc_json['title'] = doc_data['title']
+            doc_json['body'] = self._build_doc(repo['name'], doc_data)
             docs_list.append(doc_json)
         return docs_list
-
-    def _parse_body(self, raw_body):
-        posts_text = re.sub(r'\\n', "\n", raw_body)
-        result = re.sub(r'<a name="(.*)"></a>', "", posts_text)
-        return result
 
     def fresh_repos_and_docs(self):
         self._fresh_login_id()
@@ -64,7 +85,7 @@ class Yuque:
                 'id': repo['id'],
                 'name': repo['name'],
                 'public': True if repo['public'] == 1 else False,
-                'docs': self._get_docs(repo['id'])
+                'docs': self._get_docs(repo)
             }
             self.repos.append(repo_content)
 
@@ -81,5 +102,6 @@ class Yuque:
 if __name__ == '__main__':
     config = Config()
     yuque = Yuque(config['token'])
+    # print(yuque._build_meta_info("测试后", "测试"))
     yuque.fresh_repos_and_docs()
     print(yuque.repos)
