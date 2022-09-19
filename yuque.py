@@ -1,8 +1,13 @@
 import datetime
+import os
 import re
 import httpx
+
+import util
 from config import Config
 from typing import List
+import logging as log
+import shutil
 
 
 class Yuque:
@@ -77,8 +82,12 @@ tags:
         return docs_list
 
     def fresh_repos_and_docs(self):
-        self._fresh_login_id()
-        res_repos = httpx.get(self.url + '/users/' + self.login_id + '/repos', headers=self.head)
+        try:
+            self._fresh_login_id()
+            res_repos = httpx.get(self.url + '/users/' + self.login_id + '/repos', headers=self.head)
+        except httpx.HTTPError as e:
+            log.error(f'语雀api请求错误{e}')
+            return False
         repos = res_repos.json()
         for repo in repos['data']:
             repo_content = {
@@ -88,15 +97,23 @@ tags:
                 'docs': self._get_docs(repo)
             }
             self.repos.append(repo_content)
+        return True
 
     def export_docs(self, output_path=OUTPUT_PATH):
         if len(self.repos) > 0:
-            for repo in self.repos:
-                if self.allow_private_repos or repo['public'] is True:
-                    print(f"{repo['name']}")
-                    for doc in repo['docs']:
-                        print(f"- {doc['title']}")
-                        Yuque.write_file(output_path + doc['title'] + '.md', doc['body'])
+            try:
+                util.rmtree_ifexits(output_path)
+                os.mkdir(output_path)
+                for repo in self.repos:
+                    if self.allow_private_repos or repo['public'] is True:
+                        log.info(f"{repo['name']}")
+                        for doc in repo['docs']:
+                            log.info(f"- {doc['title']}")
+                            Yuque.write_file(output_path + doc['title'] + '.md', doc['body'])
+            except IOError as e:
+                log.error(f'写入文件文件错误{e}')
+                return False
+        return True
 
 
 if __name__ == '__main__':
