@@ -6,7 +6,7 @@ import httpx
 import util
 from config import Config
 from typing import List
-import logging as log
+from log import logger_config
 import shutil
 
 
@@ -21,6 +21,7 @@ class Yuque:
         self.login_id = ''
         self.allow_private_repos = allow_private_repos
         self.repos = []
+        self.log = logger_config('logs.txt', Yuque.__name__)
 
     @staticmethod
     def _build_head(token):
@@ -86,7 +87,7 @@ tags:
             self._fresh_login_id()
             res_repos = httpx.get(self.url + '/users/' + self.login_id + '/repos', headers=self.head)
         except httpx.HTTPError as e:
-            log.error(f'语雀api请求错误{e}')
+            self.log.error(f'语雀api请求错误{e}')
             return False
         repos = res_repos.json()
         for repo in repos['data']:
@@ -106,12 +107,12 @@ tags:
                 os.mkdir(output_path)
                 for repo in self.repos:
                     if self.allow_private_repos or repo['public'] is True:
-                        log.info(f"{repo['name']}")
+                        self.log.info(f"获取到知识库: {repo['name']}")
                         for doc in repo['docs']:
-                            log.info(f"- {doc['title']}")
+                            self.log.info(f"- {doc['title']}")
                             Yuque.write_file(output_path + doc['title'] + '.md', doc['body'])
             except IOError as e:
-                log.error(f'写入文件文件错误{e}')
+                self.log.error(f'写入文件文件错误{e}')
                 return False
         return True
 
